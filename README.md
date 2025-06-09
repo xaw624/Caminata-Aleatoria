@@ -13,5 +13,4 @@ Una aplicación web interactiva construida con [Streamlit](https://streamlit.io/
 1. Clona este repositorio:
 
    ```bash
-   git clone https://github.com/tuusuario/caminata-aleatoria-streamlit.git
-   cd caminata-aleatoria-streamlit
+   git clone https://github.com/xaw624/Caminata-Aleatoria.git
