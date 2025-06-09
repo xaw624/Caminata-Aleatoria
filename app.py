@@ -271,7 +271,6 @@ else:
     3. Haz clic en 'Ejecutar simulación'
     
     ### Características:
-    - **Detección de mínimos locales:** El sistema identifica cuando se encuentra un mínimo local
     - **Punto inicial:** Fijo o aleatorio dentro del rango
     - **Animación en tiempo real:** Visualiza el proceso paso a paso
     - **Resultados detallados:** Muestra posición inicial, final y mejor valor encontrado
