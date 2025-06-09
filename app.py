@@ -5,7 +5,6 @@ import io
 import time
 from numpy import sin, cos, exp, log, sqrt, pi,abs,tan
 import random
-#
 # Funciones seguras
 safe_dict = {
     "x": 0, "sin": sin, "cos": cos, "tan": tan,
