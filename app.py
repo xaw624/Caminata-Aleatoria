@@ -254,7 +254,7 @@ if st.sidebar.button("▶️ Ejecutar simulación", use_container_width=True):
     with col2:
         st.metric("Posición final(x)", f"{path[-1]:.4f}")
     with col3:
-        st.metric("Mejor valor encontrado para f(x)", f"{min_global:.4f}", f"en paso {paso_min_global}")
+        st.metric("Menor valor encontrado para f(x)", f"{min_global:.4f}", f"en paso {paso_min_global}")
     
     # Botón para nueva simulación
     if st.button("🔄 Realizar nueva simulación", use_container_width=True):
