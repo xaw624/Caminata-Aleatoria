@@ -1,334 +1,599 @@
-import streamlit as st
-import numpy as np
-import matplotlib.pyplot as plt
 import io
 import time
-from numpy import sin, cos, exp, log, sqrt, pi,abs,tan
-import random
-# Funciones seguras
-safe_dict = {
-    "x": 0, "sin": sin, "cos": cos, "tan": tan,
-    "exp": exp, "log": log, "sqrt": sqrt, "abs": abs,
-    "pi": pi, "__builtins__": {}
-}
 
-def caminata_aleatoria_1d(eq_str, x0, x_range, pasos, tam_vec, tipo_aleatorio='discreto', dominio_completo=False):
+import matplotlib.pyplot as plt
+import numpy as np
+import streamlit as st
+
+from AG_procesamiento import GeneticAlgorithm1D, build_function
+
+
+# -----------------------------------------------------------
+# Configuración general de la página
+# -----------------------------------------------------------
+st.set_page_config(
+    page_title="Simulador de Algoritmo Genético 1D",
+    layout="wide",
+)
+
+st.title("Simulador de Algoritmo Genético 1D")
+
+
+# -----------------------------------------------------------
+# Estado de sesión para la función actual
+# Esto permite que los ejemplos rápidos sí actualicen el input.
+# -----------------------------------------------------------
+if "func" not in st.session_state:
+    st.session_state.func = "x**2 + 10*cos(2*x) + x*sin(5*x)"
+
+
+# -----------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------
+def evaluar_vector_seguro(f, x_values):
     """
-    Realiza una caminata aleatoria en 1D optimizando una función
-    
-    Args:
-        eq_str: String de la ecuación a optimizar
-        x0: Punto inicial
-        x_range: Tupla con (mínimo, máximo) del dominio
-        pasos: Número de pasos a realizar
-        tam_vec: Tamaño de la vecindad para movimientos
-        tipo_aleatorio: 'discreto' ([-1,1]) o 'continuo' (uniforme entre -1 y 1)
-        dominio_completo: Si True, explora todo el dominio en lugar de vecindad local
-        
-    Returns:
-        path: Camino seguido
-        f: Función evaluadora
-        f_values: Valores de la función en el camino
-        min_global: Mejor valor encontrado
-        paso_min_global: Paso donde se encontró el mejor valor
+    Evalúa un arreglo de x de forma segura.
+    Si en algún punto la función falla o devuelve algo no finito,
+    ese valor se marca como NaN para no romper la gráfica.
     """
-    f = lambda x: eval(eq_str, safe_dict | {"x": x})
-    path = [x0]
-    f_values = [f(x0)]
-    min_local = f_values[0]
-    paso_min_local = 0
-    
-    for i in range(pasos):
-        x_actual = path[-1]
-        f_actual = f_values[-1]
-        
-        # Determinar el nuevo candidato
-        if dominio_completo:
-            # Explorar todo el dominio
-            x_nuevo = random.uniform(x_range[0], x_range[1])
-        else:
-            # Explorar vecindad local
-            if tipo_aleatorio == 'continuo':
-                # Número aleatorio continuo entre -1 y 1
-                direccion = random.uniform(-1, 1)
-            else:  # Por defecto discreto
-                # Elección aleatoria entre -1 y 1
-                direccion = random.choice([-1, 1])
-            
-            x_nuevo = x_actual + direccion * tam_vec
-        
-        # Verificar límites y evaluar
-        if x_range[0] <= x_nuevo <= x_range[1]:
-            f_nuevo = f(x_nuevo)
-            
-            # Solo moverse si mejora
-            if f_nuevo < f_actual:
-                path.append(x_nuevo)
-                f_values.append(f_nuevo)
-                
-                # Actualizar mejor valor global
-                if f_nuevo < min_local:
-                    min_local = f_nuevo
-                    paso_min_local = i + 1
+    resultados = []
+
+    for x in np.asarray(x_values, dtype=float):
+        try:
+            with np.errstate(all="ignore"):
+                y = f(float(x))
+
+            arr = np.asarray(y, dtype=float)
+
+            # Esperamos un escalar por cada x
+            if arr.size != 1:
+                resultados.append(np.nan)
+                continue
+
+            valor = float(arr.reshape(-1)[0])
+
+            if np.isfinite(valor):
+                resultados.append(valor)
             else:
-                # Mantener posición actual
-                path.append(x_actual)
-                f_values.append(f_actual)
-        else:
-            # Si se sale de los límites, quedarse en el mismo lugar
-            path.append(x_actual)
-            f_values.append(f_actual)
-    
-    return np.array(path), f, f_values, min_local, paso_min_local
+                resultados.append(np.nan)
+
+        except Exception:
+            resultados.append(np.nan)
+
+    return np.array(resultados, dtype=float)
 
 
-# Interfaz Streamlit
-st.title("Simulador de Caminata Aleatoria")
-# Panel de ayuda expandible
+def set_example(expr):
+    """
+    Cambia la función actual desde los botones de ejemplo.
+    Al usar on_click, Streamlit vuelve a ejecutar la app automáticamente.
+    """
+    st.session_state.func = expr
+
+def format_value(value, decimals=6):
+    """
+    Formatea un número de forma segura para mostrarlo en métricas.
+    """
+    try:
+        if value is None:
+            return "N/A"
+
+        value = float(value)
+
+        if not np.isfinite(value):
+            return "N/A"
+
+        return f"{value:.{decimals}f}"
+    except Exception:
+        return "N/A"
+
+
+# -----------------------------------------------------------
+# Panel de ayuda
+# -----------------------------------------------------------
 with st.expander("ℹ️ Instrucciones de uso", expanded=False):
-
-        st.markdown("""
+    st.markdown(
+        """
         **Sintaxis para ecuaciones:**
         - Variable: `x`
-        - Operadores: `+`, `-`, `*`, `/`, `**` (potencia)
-        - Funciones: 
+        - Operadores: `+`, `-`, `*`, `/`, `**`
+        - Funciones:
             - `sin(x)`, `cos(x)`, `tan(x)`
-            - `exp(x)`, `log(x)` (natural)
+            - `exp(x)`, `log(x)`
             - `sqrt(x)`, `abs(x)`
-        - Constantes: `pi` (3.1416)
-        
-        **Precauciones:**
-        - Evite funciones o valores no definidos en los reales.
-        
-        **Parametros de busqueda**
-        - **Aleatoriedad continua:** Valores entre -1 y 1.
-        - **Aleatoriedad discreta:** -1 o 1 (direcciones definidas)
-        - **Tamaño del paso o vecindad:** Define el tamaño de exploración de la caminata por cada iteración(Depende del tipo de aleatoridad)
-        - **Dominio completo:** Saltos aleatorios en todo el rango
-        
-        
-        """)
-# Configuración en la barra lateral
-st.sidebar.header("⚙️ Parámetros de simulación")
-eq_str = st.sidebar.text_input("Función f(x):", "x**2", help="Ingrese la función matemática a explorar")
-x_min = st.sidebar.number_input("Rango mínimo de x", value=-5.0)
-x_max = st.sidebar.number_input("Rango máximo de x", value=5.0)
+        - Constante:
+            - `pi`
 
-tipo_aleatorio = st.sidebar.radio("Tipo de aleatoriedad:", 
-                                  ["discreto", "continuo"], 
-                                  index=0,
-                                  help="Discreto: elige entre -1 o 1. Continuo: cualquier valor entre -1 y 1")
+        **Qué hace esta app:**
+        - Genera una población inicial aleatoria dentro del dominio.
+        - Evalúa qué tan buena es cada solución.
+        - Aplica selección, crossover, mutación y elitismo.
+        - Muestra la evolución generación por generación.
 
-dominio_completo = st.sidebar.checkbox("Explorar todo el dominio", 
-                                      value=False,
-                                      help="Si está marcado, salta a cualquier punto del dominio en lugar de moverse localmente")
+        **Interpretación visual:**
+        - Los puntos representan la población.
+        - La estrella representa el mejor valor histórico encontrado.
+        - La generación 0 es la población inicial.
+        """
+    )
 
-# Solo mostrar tamaño de vecindad si no estamos en modo dominio completo
-if not dominio_completo:
-    if tipo_aleatorio=="discreto":
-        tam_vec = st.sidebar.number_input("Tamaño de paso(±)", 
-                                        value=0.1, 
-                                        min_value=0.01, 
-                                        max_value=abs(x_max - x_min))
-    else:
-        tam_vec = st.sidebar.number_input("Tamaño de la vecindad(±)", 
-                                        value=0.1, 
-                                        min_value=0.01, 
-                                        max_value=abs(x_max - x_min))
-else:
-    tam_vec = 0.1  # Valor por defecto que no se usa pero necesario para la función
 
-# Opción para punto inicial aleatorio
-punto_inicial_aleatorio = st.sidebar.checkbox("Punto inicial aleatorio", 
-                                             value=False, 
-                                             help="Si se marca, la posición inicial será aleatoria dentro del rango")
+# -----------------------------------------------------------
+# Sidebar: parámetros del AG
+# -----------------------------------------------------------
+st.sidebar.header("⚙️ Parámetros del algoritmo")
 
-if punto_inicial_aleatorio:
-    x_ini = None  # Se generará aleatoriamente más adelante
-    st.sidebar.info("Posición inicial se generará aleatoriamente")
-else:
-    x_ini = st.sidebar.slider("Posición inicial (x0)", x_min, x_max, 0.0)
+eq_str = st.sidebar.text_input(
+    "Función f(x):",
+    key="func",
+    help="Escribe la función a minimizar usando la variable x.",
+)
 
-pasos = st.sidebar.number_input("Cantidad de pasos", 
-                               min_value=10, 
-                               value=100,
-                               help="Número de iteraciones de la caminata")
-frame_delay = st.sidebar.slider("Velocidad de animación (ms)", 
-                               10, 500, 100,
-                               help="Tiempo entre frames durante la animación")
+x_min = st.sidebar.number_input("Límite inferior del dominio", value=-10.0)
+x_max = st.sidebar.number_input("Límite superior del dominio", value=10.0)
 
-# Mensaje contextual sobre la estrategia seleccionada
-if dominio_completo:
-    if tipo_aleatorio=="discreto":
-        st.sidebar.info("🔍 Modo: Exploración de TODO el dominio")
-else:
-    if tipo_aleatorio == "discreto":
-        st.sidebar.info(f"🔍 Modo: Vecindad local con pasos de ±{tam_vec}")
-    else:
-        st.sidebar.info(f"🔍 Modo: Vecindad local con pasos entre ±{tam_vec}")
+pop_size = st.sidebar.number_input(
+    "Tamaño de población",
+    min_value=4,
+    value=50,
+    step=1,
+    help="Cantidad de individuos por generación.",
+)
 
-# Sección principal
-if st.sidebar.button("▶️ Ejecutar simulación", use_container_width=True):
-    # Generar punto inicial aleatorio si se seleccionó
-    if punto_inicial_aleatorio:
-        x_ini = random.uniform(x_min, x_max)
-        st.info(f"Posición inicial generada aleatoriamente: x0 = {x_ini:.4f}")
-    else:
-        st.info(f"Posición inicial fija: x0 = {x_ini:.4f}")
-    
-    with st.spinner(f"Calculando caminata con {pasos} pasos..."):
-        path, f, y_vals, min_global, paso_min_global = caminata_aleatoria_1d(
-            eq_str, x_ini, (x_min, x_max), pasos, tam_vec
+generations = st.sidebar.number_input(
+    "Cantidad de generaciones",
+    min_value=1,
+    value=80,
+    step=1,
+)
+
+pc = st.sidebar.slider(
+    "Probabilidad de crossover (pc)",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.8,
+    step=0.01,
+)
+
+pm = st.sidebar.slider(
+    "Probabilidad de mutación (pm)",
+    min_value=0.0,
+    max_value=1.0,
+    value=0.1,
+    step=0.01,
+)
+
+sigma = st.sidebar.number_input(
+    "Sigma relativo de mutación",
+    min_value=0.001,
+    max_value=1.0,
+    value=0.10,
+    step=0.01,
+    help="Se multiplica por el ancho del dominio. Ejemplo: 0.10 equivale al 10% del rango.",
+)
+
+frame_delay = st.sidebar.slider(
+    "Velocidad de animación (ms)",
+    min_value=10,
+    max_value=500,
+    value=80,
+    help="Tiempo entre generaciones en la animación.",
+)
+
+random_state = st.sidebar.number_input(
+    "Semilla aleatoria (opcional)",
+    min_value=0,
+    value=42,
+    step=1,
+    help="Usa la misma semilla para repetir resultados.",
+)
+
+run_button = st.sidebar.button("▶️ Ejecutar simulación", use_container_width=True)
+
+
+# -----------------------------------------------------------
+# Texto principal
+# -----------------------------------------------------------
+with st.expander("🧬 Fundamento teórico del algoritmo genético", expanded=False):
+    st.markdown("""
+    Un **algoritmo genético** es un método metaheurístico de optimización inspirado en principios de evolución biológica.  
+    Su propósito consiste en aproximar soluciones óptimas mediante la evolución iterativa de una población de candidatos.
+
+    En esta aplicación se considera un problema de **optimización unidimensional**, donde cada individuo de la población
+    representa un valor real $ x \in [a,b]$, y el objetivo es aproximar un minimizador de una función $ f(x) $.
+
+    ## Esquema general del método
+
+    ### 1. Inicialización
+    Se genera una población inicial de tamaño finito dentro del dominio de búsqueda:
+    $$
+    x_i^{(0)} \in [a,b], \quad i=1,\dots,N
+    $$
+    donde $ N $ es el tamaño de la población.
+
+    ### 2. Evaluación
+    Cada individuo es evaluado mediante la función objetivo $ f(x) $.  
+    Dado que el problema planteado es de **minimización**, los individuos con menor valor de $ f(x) $ se consideran más aptos.
+
+    ### 3. Selección
+    Se eligen individuos de la población actual para actuar como progenitores.  
+    En esta implementación se emplea **selección por torneo**, mecanismo que favorece la reproducción de individuos con mejor desempeño relativo.
+
+    ### 4. Crossover
+    A partir de dos progenitores, se genera un descendiente mediante combinación lineal convexa:
+    $$
+    x_{hijo} = \\alpha x_1 + (1-\\alpha)x_2, \quad \\alpha \in [0,1]
+    $$
+    Este operador permite recombinar información genética de soluciones previamente encontradas.
+
+    ### 5. Mutación
+    El descendiente puede experimentar una perturbación aleatoria gaussiana:
+    $$
+    x' = x + \\varepsilon, \quad \\varepsilon \\sim \\mathcal{N}(0,\\sigma^2)
+    $$
+    La mutación introduce diversidad en la población y reduce la probabilidad de convergencia prematura hacia óptimos locales.
+
+    ### 6. Elitismo
+    El mejor individuo encontrado hasta el momento se preserva en la siguiente generación.  
+    Este criterio garantiza que la calidad de la mejor solución histórica no se degrade durante la evolución.
+
+    ### 7. Iteración generacional
+    El proceso de selección, recombinación y mutación se repite durante un número prefijado de generaciones,
+    produciendo una sucesión de poblaciones:
+    $$
+    P^{(0)}, P^{(1)}, \dots, P^{(T)}
+    $$
+
+    ## Interpretación de los parámetros
+
+    - **Función $$ f(x) $$**
+      Define el problema de optimización. La aplicación busca aproximar un valor de $ x $ que minimice dicha función.
+
+    - **Límite inferior / límite superior del dominio**  
+      Delimitan el intervalo de búsqueda:
+      $$
+      x \in [a,b]
+      $$
+      Todo individuo generado o mutado es restringido a este intervalo.
+
+    - **Tamaño de población**  
+      Número de individuos presentes en cada generación.  
+      Un tamaño de población mayor incrementa la diversidad de búsqueda, aunque también eleva el costo computacional.
+
+    - **Cantidad de generaciones**  
+      Número de iteraciones evolutivas del algoritmo.  
+      En general, un mayor número de generaciones permite una exploración más prolongada del espacio de búsqueda.
+
+    - **Probabilidad de crossover $$ p_c $$**  
+      Probabilidad de aplicar recombinación entre dos progenitores.  
+      Valores elevados suelen favorecer la explotación de información ya presente en la población.
+
+    - **Probabilidad de mutación $$ p_m $$**  
+      Probabilidad de aplicar perturbación aleatoria a un descendiente.  
+      Este parámetro regula el grado de exploración estocástica.
+
+    - **Sigma relativo de mutación**  
+      Controla la magnitud de la perturbación gaussiana.  
+      En la implementación, este valor se escala con la amplitud del dominio:
+      $$
+      \\sigma_{real} = \\sigma_{relativo}(b-a)
+      $$
+      Valores pequeños inducen refinamiento local; valores grandes favorecen exploración global.
+
+    - **Semilla aleatoria**  
+      Permite reproducibilidad experimental.  
+      Para una misma semilla y los mismos parámetros, la ejecución produce la misma trayectoria evolutiva.
+
+    - **Velocidad de animación**  
+      Modifica únicamente la representación visual del proceso evolutivo; no altera el comportamiento del algoritmo.
+
+    ## Interpretación de la visualización
+
+    - La **curva** representa la función objetivo $ f(x) $.
+    - Los **puntos** representan la población en una generación dada.
+    - La **estrella** señala el mejor individuo histórico encontrado hasta ese instante.
+    - La gráfica de evolución complementaria muestra la sucesión del mejor valor histórico de $ f(x) $ a lo largo de las generaciones.
+
+    ## Observación metodológica
+    El algoritmo genético es un método heurístico y estocástico.  
+    En consecuencia, no garantiza la obtención exacta del mínimo global en todos los casos; sin embargo,
+    constituye una herramienta robusta para aproximar soluciones de alta calidad en problemas donde los métodos analíticos
+    o deterministas pueden resultar difíciles de aplicar.
+    """)
+
+
+# -----------------------------------------------------------
+# Ejemplos rápidos
+# -----------------------------------------------------------
+st.subheader("💡 Ejemplos rápidos")
+
+row1 = st.columns(4)
+row2 = st.columns(4)
+row3 = st.columns(4)
+
+with row1[0]:
+    st.button(
+        "Parábola",
+        use_container_width=True,
+        on_click=set_example,
+        args=("x**2",),
+    )
+
+with row1[1]:
+    st.button(
+        "Seno",
+        use_container_width=True,
+        on_click=set_example,
+        args=("sin(2*pi*x/3)",),
+    )
+
+with row1[2]:
+    st.button(
+        "Gaussiana",
+        use_container_width=True,
+        on_click=set_example,
+        args=("exp(-x**2)",),
+    )
+
+with row1[3]:
+    st.button(
+        "Valor absoluto",
+        use_container_width=True,
+        on_click=set_example,
+        args=("abs(x)",),
+    )
+
+with row2[0]:
+    st.button(
+        "Doble pozo",
+        use_container_width=True,
+        on_click=set_example,
+        args=("x**2 - 1)**2",),
+    )
+
+with row2[1]:
+    st.button(
+        "Múltiples mínimos",
+        use_container_width=True,
+        on_click=set_example,
+        args=("x*sin(10*x)",),
+    )
+
+with row2[2]:
+    st.button(
+        "Logarítmica",
+        use_container_width=True,
+        on_click=set_example,
+        args=("log(abs(x) + 1)",),
+    )
+
+with row2[3]:
+    st.button(
+        "Sinusoidal",
+        use_container_width=True,
+        on_click=set_example,
+        args=("sin(5*x)",),
+    )
+
+with row3[0]:
+    st.button(
+        "Pendiente con oscilación",
+        use_container_width=True,
+        on_click=set_example,
+        args=("0.1*x + sin(3*x)",),
+    )
+
+with row3[1]:
+    st.button(
+        "Valles múltiples",
+        use_container_width=True,
+        on_click=set_example,
+        args=("sin(x) + sin(10*x/3)",),
+    )
+
+with row3[2]:
+    st.button(
+        "Terreno irregular",
+        use_container_width=True,
+        on_click=set_example,
+        args=("0.3*sin(8*x) + 0.7*cos(15*x)",),
+    )
+
+with row3[3]:
+    st.button(
+        "Escalón sigmoide",
+        use_container_width=True,
+        on_click=set_example,
+        args=("1/(1 + exp(-10*x))",),
+    )
+
+st.code(st.session_state.func, language="python")
+
+
+# -----------------------------------------------------------
+# Ejecución principal
+# -----------------------------------------------------------
+if run_button:
+    # Validación simple del dominio
+    if x_min >= x_max:
+        st.error("El límite inferior debe ser menor que el límite superior.")
+        st.stop()
+
+    try:
+        # Construir función desde el string
+        f = build_function(eq_str)
+
+        # Muestreo de la curva de fondo
+        x_plot = np.linspace(x_min, x_max, 600)
+        y_plot = evaluar_vector_seguro(f, x_plot)
+
+        valid_curve = np.isfinite(y_plot)
+
+        if valid_curve.sum() < 2:
+            raise ValueError(
+                "La función no pudo evaluarse correctamente en el dominio seleccionado."
+            )
+
+        # Crear y ejecutar el algoritmo genético
+        ag = GeneticAlgorithm1D(
+            f=f,
+            bounds=(x_min, x_max),
+            pop_size=int(pop_size),
+            pc=pc,
+            pm=pm,
+            sigma=sigma,
+            generations=int(generations),
+            random_state=int(random_state),
         )
 
-    # Generar puntos para la función de fondo
-    x_plot = np.linspace(x_min, x_max, 300)
-    y_plot = [f(x) for x in x_plot]
-    y_min, y_max = min(y_plot + y_vals), max(y_plot + y_vals)
-    y_range = y_max - y_min
-    
-    # Configurar la figura
+        with st.spinner("Ejecutando algoritmo genético..."):
+            best_x, best_f, history, best_history = ag.run()
+
+    except Exception as e:
+        st.error(f"Error al ejecutar la simulación: {e}")
+        st.stop()
+
+    # -------------------------------------------------------
+    # Preparar datos para la animación
+    # -------------------------------------------------------
+    population_frames = []
+    all_y_values = y_plot[valid_curve].tolist()
+
+    for population in history:
+        pop_y = evaluar_vector_seguro(f, population)
+        valid_pop = np.isfinite(pop_y)
+
+        population_frames.append((population, pop_y, valid_pop))
+
+        if np.any(valid_pop):
+            all_y_values.extend(pop_y[valid_pop].tolist())
+
+    # Incluir el mejor valor final para ajustar bien el eje Y
+    if best_f is not None and np.isfinite(best_f):
+        all_y_values.append(float(best_f))
+
+    if len(all_y_values) == 0:
+        st.error("No se pudieron obtener valores válidos para graficar.")
+        st.stop()
+
+    y_min = float(np.min(all_y_values))
+    y_max = float(np.max(all_y_values))
+    y_range = max(y_max - y_min, 1e-6)
+
+    # -------------------------------------------------------
+    # Figura principal
+    # -------------------------------------------------------
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(x_plot, y_plot, 'b-', linewidth=2, alpha=0.7, label=f"f(x) = {eq_str}")
-    point = ax.scatter([], [], c='red', s=80, zorder=5, label="Posición actual")
-    line, = ax.plot([], [], 'r--', alpha=0.6, linewidth=1.5, label="Trayectoria")
-    #min_point = ax.scatter([], [], c='green', s=100, zorder=6, marker='*', label="Mínimo encontrado")
-    
-    # Configurar ejes y estilo
+
+    # Curva de la función
+    ax.plot(x_plot[valid_curve], y_plot[valid_curve], linewidth=2, alpha=0.75, label=f"f(x) = {eq_str}")
+
+    # Scatter de la población actual
+    population_scatter = ax.scatter([], [], s=55, zorder=4, label="Población")
+
+    # Scatter del mejor histórico
+    best_scatter = ax.scatter([], [], s=160, marker="*", zorder=5, label="Mejor histórico")
+
     ax.set_xlim(x_min, x_max)
-    ax.set_ylim(y_min - 0.1*y_range, y_max + 0.1*y_range)
-    ax.set_title(f"Evolución de la Caminata Aleatoria: f(x) = {eq_str}", fontsize=14)
-    ax.set_xlabel("x", fontsize=12)
-    ax.set_ylabel("f(x)", fontsize=12)
-    ax.grid(True, linestyle='--', alpha=0.4)
-    ax.legend(loc='upper right')
-    
-    # Contenedores para la animación y progreso
+    ax.set_ylim(y_min - 0.1 * y_range, y_max + 0.1 * y_range)
+    ax.set_xlabel("x")
+    ax.set_ylabel("f(x)")
+    ax.grid(True, linestyle="--", alpha=0.4)
+    ax.legend(loc="upper right")
+
+    # Contenedores dinámicos de Streamlit
     animation_placeholder = st.empty()
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
-    # Variables para rastrear el mejor punto
-    best_x = path[0]
-    best_y = y_vals[0]
-    
-    # Crear la animación frame por frame
-    for i in range(len(path)):
-        # Actualizar mejor punto encontrado
-        if y_vals[i] < best_y:
-            best_x = path[i]
-            best_y = y_vals[i]
-        
-        # Actualizar datos
-        line.set_data(path[:i+1], y_vals[:i+1])
-        point.set_offsets([[path[i], y_vals[i]]])
-        
-        # Convertir figura a imagen
+
+    total_frames = len(population_frames)
+
+    # -------------------------------------------------------
+    # Animación generación por generación
+    # -------------------------------------------------------
+    for gen_idx, ((population, pop_y, valid_pop), (best_x_hist, best_f_hist)) in enumerate(
+        zip(population_frames, best_history)
+    ):
+        # Actualizar población visible
+        if np.any(valid_pop):
+            offsets = np.column_stack((population[valid_pop], pop_y[valid_pop]))
+            population_scatter.set_offsets(offsets)
+        else:
+            population_scatter.set_offsets(np.empty((0, 2)))
+
+        # Actualizar mejor histórico
+        if best_x_hist is not None and np.isfinite(best_f_hist):
+            best_scatter.set_offsets(np.array([[best_x_hist, best_f_hist]]))
+        else:
+            best_scatter.set_offsets(np.empty((0, 2)))
+
+        ax.set_title(f"Algoritmo Genético 1D - Generación {gen_idx}")
+
+        # Convertir figura a imagen para Streamlit
         buf = io.BytesIO()
-        fig.savefig(buf, format='png', dpi=120, bbox_inches='tight')
+        fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
         buf.seek(0)
-        
-        # Mostrar frame en Streamlit
+
+        # Mostrar frame
         animation_placeholder.image(buf, use_container_width=True)
-        
-        # Actualizar barra de progreso y estado
-        progress = int(100 * (i+1) / len(path))
+
+        # Actualizar progreso
+        progress = int(100 * (gen_idx + 1) / total_frames)
         progress_bar.progress(progress)
-        
 
-        status_text.text(f"Paso {i+1}/{len(path)} - x = {path[i]:.4f}, f(x) = {y_vals[i]:.4f}")
-        
-        # Pausa para controlar velocidad
-        time.sleep(frame_delay/1000)
-    
+        # Texto de estado
+        if best_x_hist is not None and np.isfinite(best_f_hist):
+            status_text.text(
+                f"Generación {gen_idx}/{total_frames - 1}  |  "
+                f"Mejor histórico: x = {best_x_hist:.6f}, f(x) = {best_f_hist:.6f}"
+            )
+        else:
+            status_text.text(f"Generación {gen_idx}/{total_frames - 1}")
+
+        # Pausa para controlar velocidad de animación
+        time.sleep(frame_delay / 1000)
+
     plt.close(fig)
-    st.success("✅ Simulación completada!")
-    
+
+    st.success("✅ Simulación completada.")
+    st.caption("La generación 0 corresponde a la población inicial.")
+
+    # -------------------------------------------------------
     # Resultados finales
+    # -------------------------------------------------------
     st.subheader("📊 Resultados")
-    
-    # Crear columnas para métricas
+
     col1, col2, col3 = st.columns(3)
+
     with col1:
-        st.metric("Posición inicial(x)", f"{path[0]:.4f}")
+        st.metric("Mejor x encontrado", format_value(best_x))
+
     with col2:
-        st.metric("Posición final(x)", f"{path[-1]:.4f}")
+        st.metric("Mejor f(x)", format_value(best_f))
+
     with col3:
-        st.metric("Menor valor encontrado para f(x)", f"{min_global:.4f}", f"en paso {paso_min_global}")
-    
-    # Botón para nueva simulación
-    if st.button("🔄 Realizar nueva simulación", use_container_width=True):
+        st.metric("Generaciones evaluadas", str(len(history) - 1))
+
+    # -------------------------------------------------------
+    # Gráfica extra: evolución del mejor histórico
+    # -------------------------------------------------------
+    best_values = []
+    for _, best_f_hist in best_history:
+        if best_f_hist is not None and np.isfinite(best_f_hist):
+            best_values.append(float(best_f_hist))
+        else:
+            best_values.append(np.nan)
+
+    if len(best_values) > 0:
+        st.subheader("📉 Evolución del mejor valor encontrado")
+
+        fig2, ax2 = plt.subplots(figsize=(10, 4))
+        ax2.plot(best_values, marker="o", linewidth=1.5)
+        ax2.set_xlabel("Generación")
+        ax2.set_ylabel("Mejor f(x) histórico")
+        ax2.grid(True, linestyle="--", alpha=0.4)
+        st.pyplot(fig2)
+        plt.close(fig2)
+
+    if st.button("🔄 Ejecutar otra simulación", use_container_width=True):
         st.rerun()
-# Mensaje inicial
-else:
-    st.markdown("""
-    Visualiza cómo una partícula explora una función matemática mediante pasos aleatorios,
-    aceptando solo movimientos que mejoran su posición (reducen el valor de la función).
-    
-    **Para comenzar:**
-    1. Ingresa una función matemática en la barra lateral
-    2. Configura los parámetros de simulación
-    3. Haz clic en 'Ejecutar simulación'
-    
-    ### Características:
-    - **Punto inicial:** Fijo o aleatorio dentro del rango
-    - **Animación en tiempo real:** Visualiza el proceso paso a paso
-    - **Resultados detallados:** Muestra posición inicial, final y mejor valor encontrado
-    
-    ### Instrucciones para ecuaciones:
-    - Usa `x` como variable independiente
-    - Funciones disponibles: `sin`, `cos`, `exp`, `log`, `sqrt`
-    - Ejemplos: `x**2`, `sin(2*pi*x/3)`, `exp(-x**2)`
-    """)
-    
-    # Ejemplos interactivos
-    st.subheader("💡 Ejemplos rápidos")
-    cols1 = st.columns(4)
-    cols2 = st.columns(4)
-    cols3 = st.columns(4)
-
-    # Primera fila de botones
-    with cols1[0]:
-        if st.button("Parábola", use_container_width=True):
-            st.session_state.func = "x**2"
-    with cols1[1]:
-        if st.button("Seno", use_container_width=True):
-            st.session_state.func = "sin(2*pi*x/3)"
-    with cols1[2]:
-        if st.button("Gaussiana", use_container_width=True):
-            st.session_state.func = "exp(-x**2)"
-    with cols1[3]:
-        if st.button("Valor absoluto", use_container_width=True):
-            st.session_state.func = "abs(x)"
-
-    # Segunda fila de botones
-    with cols2[0]:
-        if st.button("Doble pozo", use_container_width=True):
-            st.session_state.func = "(x**2 - 1)**2"
-    with cols2[1]:
-        if st.button("Múltiples mínimos", use_container_width=True):
-            st.session_state.func = "x*sin(10*x)"
-    with cols2[2]:
-        if st.button("Logarítmica", use_container_width=True):
-            st.session_state.func = "log(abs(x) + 1)"
-    with cols2[3]:
-        if st.button("Sinusoidal", use_container_width=True):
-            st.session_state.func = "sin(5*x)"
-
-    # Tercera fila de botones
-    with cols3[0]:
-        if st.button("Pendiente con oscil", use_container_width=True):
-            st.session_state.func = "0.1*x + sin(3*x)"
-    with cols3[1]:
-        if st.button("Valles múltiples", use_container_width=True):
-            st.session_state.func = "sin(x) + sin(10*x/3)"
-    with cols3[2]:
-        if st.button("Terreno irregular", use_container_width=True):
-            st.session_state.func = "0.3*sin(8*x) + 0.7*cos(15*x)"
-    with cols3[3]:
-        if st.button("Escalón", use_container_width=True):
-            st.session_state.func = "1/(1 + exp(-10*x))"
-
-    # Mostrar la función actual si existe en session_state
-    if hasattr(st.session_state, 'func'):
-        st.code(f"{st.session_state.func}")
