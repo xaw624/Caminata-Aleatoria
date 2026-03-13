@@ -258,7 +258,7 @@ if st.sidebar.button("▶️ Ejecutar simulación", use_container_width=True):
     
     # Botón para nueva simulación
     if st.button("🔄 Realizar nueva simulación", use_container_width=True):
-        st.experimental_rerun()
+        st.rerun()
 # Mensaje inicial
 else:
     st.markdown("""
