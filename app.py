@@ -195,7 +195,7 @@ run_button = st.sidebar.button("▶️ Ejecutar simulación", use_container_widt
 # Texto principal
 # -----------------------------------------------------------
 with st.expander("🧬 Fundamento teórico del algoritmo genético", expanded=False):
-    st.markdown("""
+    st.markdown(r"""
     Un **algoritmo genético** es un método metaheurístico de optimización inspirado en principios de evolución biológica.  
     Su propósito consiste en aproximar soluciones óptimas mediante la evolución iterativa de una población de candidatos.
 
@@ -222,14 +222,14 @@ with st.expander("🧬 Fundamento teórico del algoritmo genético", expanded=Fa
     ### 4. Crossover
     A partir de dos progenitores, se genera un descendiente mediante combinación lineal convexa:
     $$
-    x_{hijo} = \\alpha x_1 + (1-\\alpha)x_2, \quad \\alpha \in [0,1]
+    x_{hijo} = \alpha x_1 + (1-\alpha)x_2, \quad \alpha \in [0,1]
     $$
     Este operador permite recombinar información genética de soluciones previamente encontradas.
 
     ### 5. Mutación
     El descendiente puede experimentar una perturbación aleatoria gaussiana:
     $$
-    x' = x + \\varepsilon, \quad \\varepsilon \\sim \\mathcal{N}(0,\\sigma^2)
+    x' = x + \varepsilon, \quad \varepsilon \sim \mathcal{N}(0,\sigma^2)
     $$
     La mutación introduce diversidad en la población y reduce la probabilidad de convergencia prematura hacia óptimos locales.
 
@@ -276,7 +276,7 @@ with st.expander("🧬 Fundamento teórico del algoritmo genético", expanded=Fa
       Controla la magnitud de la perturbación gaussiana.  
       En la implementación, este valor se escala con la amplitud del dominio:
       $$
-      \\sigma_{real} = \\sigma_{relativo}(b-a)
+      \sigma_{real} = \sigma_{relativo}(b-a)
       $$
       Valores pequeños inducen refinamiento local; valores grandes favorecen exploración global.
 
